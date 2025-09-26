@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Clasificador Fashion-MNIST</title>
+  <style>
+    :root{
+      --bg: #0b0c10;
+      --card: #121317;
+      --text: #e6e6e6;
+      --muted:#a7b0c0;
+      --primary:#6ea8fe;
+      --accent:#7ee787;
+      --border:#22242a;
+      --danger:#ff7675;
+    }
+    @media (prefers-color-scheme: light){
+      :root{
+        --bg:#f6f7fb; --card:#ffffff; --text:#1f2430; --muted:#5b6472;
+        --primary:#2563eb; --accent:#059669; --border:#e6e8ef; --danger:#e11d48;
+      }
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0; background:linear-gradient(120deg,var(--bg),#0f1624 60%, var(--bg));
+      color:var(--text); font:16px/1.5 system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Liberation Sans", sans-serif;
+      min-height:100dvh; display:grid; place-items:center; padding:24px;
+    }
+    .card{
+      width:min(920px,100%); background:var(--card); border:1px solid var(--border);
+      border-radius:16px; box-shadow:0 10px 30px rgba(0,0,0,.25);
+      overflow:hidden; animation:pop .3s ease-out;
+    }
+    @keyframes pop{from{transform:translateY(8px);opacity:.0}to{transform:none;opacity:1}}
+    .header{
+      padding:20px 24px; border-bottom:1px solid var(--border);
+      display:flex; align-items:center; gap:12px;
+    }
+    .dot{width:10px;height:10px;border-radius:999px;background:var(--accent);box-shadow:0 0 8px var(--accent)}
+    h1{margin:0;font-size:clamp(18px,2.8vw,22px);letter-spacing:.2px}
+    .sub{color:var(--muted);font-size:14px}
+    .body{display:grid; gap:20px; padding:20px; grid-template-columns: 1.1fr .9fr}
+    @media (max-width:880px){.body{grid-template-columns:1fr}}
+    .drop{
+      border:2px dashed var(--border); border-radius:14px; padding:18px; text-align:center; transition:.2s;
+      display:grid; gap:14px; place-items:center; min-height:260px; background:rgba(255,255,255,.02)
+    }
+    .drop.drag{border-color:var(--primary); background:rgba(99,102,241,.08)}
+    .btn{
+      appearance:none;border:1px solid var(--border); background:linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
+      color:var(--text); padding:10px 14px; border-radius:10px; cursor:pointer; font-weight:600;
+      transition:transform .05s ease, border-color .2s, box-shadow .2s;
+    }
+    .btn:hover{border-color:var(--primary); box-shadow:0 0 0 4px rgba(99,102,241,.12)}
+    .btn:active{transform:translateY(1px)}
+    .btn.primary{background:linear-gradient(180deg, rgba(99,102,241,.18), rgba(99,102,241,.1)); border-color:rgba(99,102,241,.45)}
+    .grid{display:grid; gap:14px}
+    .row{display:flex; gap:10px; align-items:center; justify-content:center; flex-wrap:wrap}
+    .hint{color:var(--muted); font-size:13px}
+    .preview{
+      width:100%; aspect-ratio:1/1; background:#0c0f14; border:1px solid var(--border); border-radius:12px;
+      display:grid; place-items:center; overflow:hidden;
+    }
+    .preview img{width:100%; height:100%; object-fit:cover}
+    .results{display:grid; gap:12px}
+    .pill{
+      display:inline-flex; align-items:center; gap:8px; padding:6px 10px; border-radius:999px;
+      background:rgba(255,255,255,.05); border:1px solid var(--border); font-size:13px
+    }
+    .bar{height:10px; width:100%; background:rgba(255,255,255,.06); border-radius:999px; overflow:hidden; border:1px solid var(--border)}
+    .bar > span{height:100%; display:block; background:linear-gradient(90deg, var(--primary), var(--accent)); width:0%}
+    .list{display:grid; gap:10px}
+    .empty{color:var(--muted); text-align:center; padding:12px}
+    .footer{padding:16px 20px; border-top:1px solid var(--border); display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap}
+    .muted{color:var(--muted); font-size:12px}
+    .danger{color:var(--danger)}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <div class="dot"></div>
+      <div>
+        <h1>Clasificador Fashion-MNIST</h1>
+        <div class="sub">Subí una imagen de prenda (se convierte a 28×28 en grises + normalización)</div>
+      </div>
+    </div>
+
+    <form class="body" method="POST" enctype="multipart/form-data" id="form">
+      <!-- Columna izquierda: uploader -->
+      <div class="grid">
+        <div id="drop" class="drop">
+          <div class="pill">Arrastrá y soltá tu imagen</div>
+          <div class="row">
+            <input type="file" id="file" name="imagen" accept="image/*" hidden required />
+            <button type="button" class="btn" id="pick">Elegir imagen</button>
+            <button type="submit" class="btn primary">Clasificar</button>
+          </div>
+          <div class="hint">JPG / PNG — se adapta y preprocesa automáticamente</div>
+        </div>
+
+        <div class="preview" id="preview">
+          <div class="empty">Sin imagen todavía</div>
+        </div>
+      </div>
+
+      <!-- Columna derecha: resultados -->
+      <div class="grid results">
+        {% if pred_text %}
+          <div class="pill">{{ pred_text }}</div>
+          {% if top3 %}
+            <div class="list" id="bars">
+              {% for nombre, p in top3 %}
+                <div>
+                  <div style="display:flex; justify-content:space-between; font-size:13px; margin-bottom:6px">
+                    <strong>{{ nombre }}</strong>
+                    <span>{{ "%.1f"|format(p) }}%</span>
+                  </div>
+                  <div class="bar"><span style="width: {{ p }}%"></span></div>
+                </div>
+              {% endfor %}
+            </div>
+          {% endif %}
+        {% else %}
+          <div class="empty">Subí una imagen y presioná <strong>Clasificar</strong> para ver el Top-3</div>
+        {% endif %}
+      </div>
+    </form>
+
+    <div class="footer">
+      <span class="muted">Tip: mejores resultados con fondo uniforme y la prenda centrada.</span>
+      <span class="muted">Modo local • Flask dev server</span>
+    </div>
+  </div>
+
+  <script>
+    // --- UI: drag & drop + preview ---
+    const drop = document.getElementById('drop');
+    const file = document.getElementById('file');
+    const pick = document.getElementById('pick');
+    const preview = document.getElementById('preview');
+    const form = document.getElementById('form');
+
+    function setPreview(imgFile){
+      const img = document.createElement('img');
+      img.alt = 'preview';
+      img.loading = 'lazy';
+      img.src = URL.createObjectURL(imgFile);
+      preview.innerHTML = '';
+      preview.appendChild(img);
+    }
+
+    pick.addEventListener('click', () => file.click());
+    file.addEventListener('change', e => {
+      if (e.target.files && e.target.files[0]) setPreview(e.target.files[0]);
+    });
+
+    ['dragenter','dragover'].forEach(ev => drop.addEventListener(ev, e => {
+      e.preventDefault(); e.stopPropagation(); drop.classList.add('drag');
+    }));
+    ['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e => {
+      e.preventDefault(); e.stopPropagation(); drop.classList.remove('drag');
+    }));
+    drop.addEventListener('drop', e => {
+      const f = e.dataTransfer.files?.[0];
+      if (f) { file.files = e.dataTransfer.files; setPreview(f); }
+    });
+
+    // Bloqueo doble submit + feedback
+    form.addEventListener('submit', () => {
+      const btns = form.querySelectorAll('button');
+      btns.forEach(b => b.disabled = true);
+      pick.textContent = '…';
+    });
+  </script>
+</body>
+</html>
+
