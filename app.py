@@ -1,5 +1,17 @@
 from flask import Flask, render_template, request
 import tensorflow as tf
+
+import logging
+logging.basicConfig(level=logging.INFO)
+app.logger.setLevel(logging.INFO)
+
+# Render/CPU pequeña: evitar contención
+tf.config.threading.set_intra_op_parallelism_threads(1)
+tf.config.threading.set_inter_op_parallelism_threads(1)
+
+# Evitar cuelgues por fotos enormes (5 MB)
+app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024
+
 import numpy as np
 from PIL import Image
 import json, io, os
@@ -28,6 +40,17 @@ modelo = tf.keras.models.load_model(
     compile=False,   # para inferencia no necesitamos deserializar optimizer/loss
     safe_mode=False  # habilita objetos custom registrados
 )
+import numpy as np
+
+def _warmup_model():
+    try:
+        dummy = np.zeros((1, 28, 28, 1), dtype=np.float32)
+        _ = modelo.predict(dummy)
+        app.logger.info("✅ Warmup del modelo completado")
+    except Exception as e:
+        app.logger.warning(f"⚠️ Warmup falló: {e}")
+
+_warmup_model()
 
 if os.path.exists(CLASES_PATH):
     with open(CLASES_PATH, "r", encoding="utf-8") as f:
@@ -122,4 +145,25 @@ if __name__ == "__main__":
 
     # Correr Flask abierto a la red local
     app.run(host="0.0.0.0", port=5000, debug=True)
+
+
+@app.get("/health")
+def health():
+    return "ok", 200
+
+@app.route("/", methods=["GET", "POST"])
+def index():
+    if request.method == "POST":
+        # 👇 este log te confirma que el navegador envió el POST
+        app.logger.info(
+            "POST / recibido. files=%s form=%s",
+            list(request.files.keys()), dict(request.form)
+        )
+        # ... tu preprocesado y predicción con 'modelo' ...
+        # pred = modelo.predict(...)
+        # return render_template("index.html", ...)
+
+    # GET:
+    return render_template("index.html")
+
 
